@@ -3,14 +3,9 @@ package ua.com.andromeda.motiondetector
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Matrix
-import android.media.MediaMetadataRetriever
-import android.media.MediaMetadataRetriever.METADATA_KEY_DURATION
-import android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
 import androidx.camera.core.ImageProxy
-import androidx.core.net.toFile
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.framework.image.MPImage
 import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
@@ -19,9 +14,6 @@ import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
-import org.bytedeco.javacv.FFmpegFrameGrabber
-import ua.com.andromeda.motiondetector.utils.BackflipDetector
-import java.io.FileInputStream
 import kotlin.math.ceil
 
 
@@ -149,57 +141,6 @@ class PoseLandmarkerHelper(
         poseLandmarkerHelperListener?.onError(
             error.message ?: "An unknown error has occurred"
         )
-    }
-
-    fun detectVideoFile(videoUri: Uri): List<Int> {
-        val originalFrameIndicies = mutableListOf<Int>()
-        val landmarkSequences = mutableListOf<List<NormalizedLandmark>>()
-
-        val retriever = MediaMetadataRetriever().apply {
-            setDataSource(context, videoUri)
-        }
-
-        val durationMillis = retriever.extractMetadata(METADATA_KEY_DURATION)?.toLong() ?: 0
-        val inputStream = FileInputStream(videoUri.toFile())
-        val grabber: FFmpegFrameGrabber = FFmpegFrameGrabber(inputStream)
-        grabber.start()
-        val frameRate = grabber.frameRate
-        grabber.stop()
-        val frameIntervalMillis = (1000 / frameRate).toLong()
-        val totalFrames = calculateNumberOfFrames(frameRate, durationMillis)
-        Log.d(TAG, "Starting detection")
-        Log.d(TAG, "Frame rate is $frameRate")
-        Log.d(TAG, "Frame interval millis is $frameIntervalMillis")
-        for (i in (0..totalFrames)) {
-            val timestampMillis = i * frameIntervalMillis
-            val timestampMicros = timestampMillis * 1000
-            val frame = retriever.getFrameAtTime(timestampMicros, OPTION_CLOSEST_SYNC)
-            if (frame == null) {
-                Log.d(TAG, "Couldn't find frame at $timestampMillis")
-                continue
-            }
-            val argb8888Frame = if (frame.config == Bitmap.Config.ARGB_8888)
-                frame
-            else
-                frame.copy(Bitmap.Config.ARGB_8888, false)
-
-            // Convert the input Bitmap object to an MPImage object to run inference
-            val mpImage = BitmapImageBuilder(argb8888Frame).build()
-            val results = poseLandmarker?.detectForVideo(mpImage, timestampMillis)
-
-            if (results != null && results.landmarks().isNotEmpty()) {
-                landmarkSequences.add(results.landmarks().flatten())
-                originalFrameIndicies.add(i)
-            }
-        }
-        Log.d(TAG, "Ending detection")
-
-//        val jumps = BackflipDetector.detect(landmarkSequences, originalFrameIndicies, frameRate)
-        // number of frame / framerate
-
-//        Log.d("PoseLandmarkerHelper", "jumps ==> $jumps")
-//        return jumps
-        return emptyList()
     }
 
     private fun calculateNumberOfFrames(frameRate: Double, durationMillis: Long): Int {
